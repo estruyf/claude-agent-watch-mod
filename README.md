@@ -4,7 +4,7 @@ A Claude Code mod that keeps the number of running Claude Code sessions under a 
 
 Run a few sessions side by side and it's easy to lose count, or to forget the one that has been sitting on a permission prompt for twenty minutes. Agent Watch:
 
-1. **Counts every Claude Code session you have open**, across terminals and the desktop app.
+1. **Counts every Claude Code session you have open**, across terminals and the desktop app. Headless runs (`claude -p`, scripts, CI) don't count.
 2. **Warns you on prompt submit** when you're at or over the limit (default 3):
    `Hey Elio, be aware you are already running 3 agents.`
 3. **Shows which sessions are waiting on you or sit idle**, so you find the ones you forgot.
@@ -78,6 +78,8 @@ Or `claude plugin marketplace update agent-watch-mod && claude plugin update age
 | Idle | `turn.complete` fired and no new prompt since | no, only shown in the band, the pane and the forgotten nudge |
 | Removed | `session.end` (including `/exit` and `/clear`), or no heartbeat for 2 minutes | no |
 
+Headless runs (`claude -p`) draw on no surface, so they write no status file and are never counted or shown. A desktop session counts from the moment its surface attaches.
+
 Subagent turns don't change the state. A permission prompt raised by a subagent does make the session *waiting*, because it blocks on you all the same.
 
 ## Configure
@@ -123,7 +125,7 @@ git clone https://github.com/estruyf/claude-agent-watch-mod
 cd claude-agent-watch-mod
 claude plugin validate plugins/agent-watch     # the manifest and the hooks module
 claude plugin validate .                       # the marketplace
-claude plugin test plugins/agent-watch         # 27 tests
+claude plugin test plugins/agent-watch         # 30 tests
 claude --plugin-dir plugins/agent-watch        # run it; saving a file hot-reloads it
 ```
 

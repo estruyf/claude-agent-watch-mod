@@ -1,6 +1,6 @@
 import { mock } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
-import type { AgentInfo, On, RenderElement } from 'claude-code'
+import type { AgentInfo, On, RenderElement, RenderSurface } from 'claude-code'
 
 import type { AgentRecord } from '../types'
 
@@ -25,6 +25,8 @@ export const world = (
     agents?: AgentInfo[]
     /** Command names the engine refuses, as it refuses a built-in's. */
     refuse?: string[]
+    /** Where the session draws; empty for a `claude -p` run. */
+    surfaces?: RenderSurface[]
   } = {},
 ) => {
   const files = new Map<string, string>()
@@ -35,7 +37,13 @@ export const world = (
   mock.store(on, options.store ?? {})
   mock.env(on, { HOME, USER: 'elio' })
 
+  const surfaces = [...(options.surfaces ?? ['terminal'])]
   on('session.id', () => ({ value: SELF }))
+  on('session.surfaces', () => ({ value: [...surfaces] }))
+  on('session.attach', ($, e) => {
+    surfaces.push(e.surface)
+    return { clientId: e.clientId }
+  })
   on('session.cwd', () => ({ value: options.cwd ?? '/work/alpha' }))
   on('session.start', ($, e) => ({ cwd: e.cwd }))
   on('session.end', ($, e) => ({ sessionId: e.sessionId }))
@@ -76,6 +84,7 @@ export const world = (
     if (text === undefined) throw new Error(`ENOENT: ${e.path}`)
     return { value: text }
   })
+  on('fs.exists', ($, e) => ({ value: files.has(e.path) }))
   on('fs.list', ($, e) => {
     const prefix = `${e.path.replace(/\/$/, '')}/`
     const entries = [...files.keys()]
@@ -117,8 +126,9 @@ export const world = (
   }
 
   const own = (): AgentRecord => JSON.parse(files.get(fileOf(SELF)) ?? 'null')
+  const hasOwn = () => files.has(fileOf(SELF))
 
-  return { files, toasts, runs, fills, clock, seed, own }
+  return { files, toasts, runs, fills, clock, seed, own, hasOwn }
 }
 
 export const start = ($: Engine) =>

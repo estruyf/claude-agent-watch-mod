@@ -71,9 +71,14 @@ const ensureSelf = async ($: Engine): Promise<AgentSelf> => {
   return fresh
 }
 
-/** Writes this session's file with a fresh heartbeat and mirrors it in state. */
-const writeSelf = async ($: Engine): Promise<AgentRecord> => {
+/**
+ * Writes this session's file with a fresh heartbeat and mirrors it in state.
+ * A session that draws nowhere (a `claude -p` run) writes none and is not
+ * counted: null. A desktop session counts once its surface attaches.
+ */
+const writeSelf = async ($: Engine): Promise<AgentRecord | null> => {
   const own = await ensureSelf($)
+  if ((await $.session.surfaces()).length === 0) return null
   const record: AgentRecord = {
     id: own.id,
     cwd: await $.session.cwd(),
@@ -139,7 +144,8 @@ const markEnded = async ($: Engine, id: string): Promise<void> => {
     since: now,
     heartbeat: now,
   }
-  await writeRecord($, record)
+  // Only a session that wrote a file ends it: a headless run never wrote one.
+  if (await $.fs.exists(fileOf(await watchDir($), id))) await writeRecord($, record)
   await update($, sessions, list => list.filter(one => one.id !== id))
   if (own !== null && own.id === id) {
     const ended: AgentSelf = { ...own, status: 'ended', since: now, before: null }
@@ -198,10 +204,11 @@ const refresh = async (
   options: { countSubagents: boolean; isPruning?: boolean },
 ): Promise<AgentRecord[]> => {
   const own = await writeSelf($)
+  const { id } = await ensureSelf($)
   const now = await $.clock.now()
   const all = await readAll($)
-  const live = all.filter(one => isLive(one, now) && one.id !== own.id)
-  const list = own.status === 'ended' ? live : [...live, own]
+  const live = all.filter(one => isLive(one, now) && one.id !== id)
+  const list = own === null || own.status === 'ended' ? live : [...live, own]
   await update($, sessions, () => list)
   await update($, checkedAt, () => now)
 
@@ -514,6 +521,14 @@ export const register: Register = (on, options) => {
     await resolveWait($)
 
     return ran
+  })
+
+  // The desktop app attaches its surface after start: count it from then on.
+  on('session.attach', async ($, e, next) => {
+    const attached = await next(e)
+    await writeSelf($).catch(() => undefined)
+
+    return attached
   })
 
   on('session.end', async ($, e, next) => {
