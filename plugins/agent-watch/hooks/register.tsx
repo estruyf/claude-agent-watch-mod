@@ -7,6 +7,7 @@ import {
   forgotten,
   formatDuration,
   HEARTBEAT_MS,
+  LOOK_MS,
   isLive,
   isPrunable,
   isSafeId,
@@ -179,6 +180,15 @@ const prune = async ($: Engine, records: readonly AgentRecord[], now: number) =>
   return ran?.exitCode === 0 ? old.length : 0
 }
 
+/** Reads the other sessions' files between heartbeats, so the band keeps up. */
+const look = async ($: Engine): Promise<void> => {
+  const own = await ensureSelf($)
+  const now = await $.clock.now()
+  const others = (await readAll($)).filter(one => isLive(one, now) && one.id !== own.id)
+  await update($, sessions, list => [...others, ...list.filter(one => one.id === own.id)])
+  await update($, checkedAt, () => now)
+}
+
 /**
  * The heartbeat: writes this session's file, reads every session's, keeps the
  * live ones in state and prunes the old ones.
@@ -294,10 +304,25 @@ const tick = async ($: Engine, config: Options) => {
   await nudgeForgotten($, config, list)
 }
 
+/** `/agents` is Claude Code's own, so the overview is `/agents-list`. */
+const COMMANDS = [
+  {
+    name: 'agents-list',
+    description: 'List every Claude Code session: waiting, idle and working',
+    immediate: true,
+  },
+  {
+    name: 'agents-limit',
+    description: 'Set how many sessions may run before Agent Watch warns you',
+    argumentHint: '<n> | reset',
+    immediate: true,
+  },
+] as const
+
 const LIMIT_USAGE = 'Usage: /agents-limit <n> (a whole number, 1 or more), or /agents-limit reset'
 
 // ---------------------------------------------------------------------------
-// Overview: the /agents pane and the band above the prompt
+// Overview: the /agents-list pane and the band above the prompt
 // ---------------------------------------------------------------------------
 
 /** Single-width symbols, no emoji. */
@@ -339,21 +364,19 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
-    await $.command.register({
-      name: 'agents-limit',
-      description: 'Set how many sessions may run before Agent Watch warns you',
-      argumentHint: '<n> | reset',
-      immediate: true,
-    })
-    await $.command.register({
-      name: 'agents',
-      description: 'List every Claude Code session: waiting, idle and working',
-      immediate: true,
-    })
+    // A name the engine refuses (a built-in's) must not stop the heartbeat.
+    for (const command of COMMANDS) {
+      await $.command.register(command).catch((error: unknown) => {
+        $.ui.log(`agent-watch: /${command.name} not registered: ${String(error)}`)
+      })
+    }
     await ensureSelf($)
     await tick($, config)
     $.clock.every(HEARTBEAT_MS, () => {
       tick($, config).catch(() => undefined)
+    })
+    $.clock.every(LOOK_MS, () => {
+      look($).catch(() => undefined)
     })
 
     return started
@@ -381,7 +404,7 @@ export const register: Register = (on, options) => {
     return { text: `Agent limit set to ${value}.` }
   })
 
-  on('command.run', { command: 'agents' }, async $ => {
+  on('command.run', { command: 'agents-list' }, async $ => {
     const list = await refresh($, { countSubagents: config.countSubagents, isPruning: false })
     const max = await loadLimit($, config)
     await $.ui.open({ id: PANE, title: 'Agents' })

@@ -37,11 +37,11 @@ test('writes its own status file and keeps it beating', async ($, on) => {
   expect(w.own().since).toBe(first.since)
 })
 
-test('a session picked up between heartbeats shows on the next one', async ($, on) => {
+test('a session picked up between heartbeats shows within ten seconds', async ($, on) => {
   const w = world(on)
   await start($)
   w.seed('late', 'working')
-  await w.clock.advance(30_000)
+  await w.clock.advance(10_000)
 
   const ui = await $.ui.mount({
     plugin: 'agent-watch',

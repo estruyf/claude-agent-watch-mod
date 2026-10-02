@@ -44,7 +44,7 @@ test('a stored override survives into the next session', { options: { limit: 5 }
   expect(w.toasts).toEqual(['Hey elio, be aware you are already running 1 agent.'])
 })
 
-test('/agents opens a pane: waiting first, then idle longest first, then working', async ($, on) => {
+test('/agents-list opens a pane: waiting first, then idle longest first, then working', async ($, on) => {
   const w = world(on)
   const now = w.clock.now()
   w.seed('busy', 'working', { since: now - 50 * MINUTE })
@@ -53,7 +53,7 @@ test('/agents opens a pane: waiting first, then idle longest first, then working
   w.seed('resting', 'idle', { since: now - 10 * MINUTE })
   await start($)
 
-  const ran = await run($, 'agents', '')
+  const ran = await run($, 'agents-list', '')
   expect(ran.text).toBe('Agent Watch: 1 working · 1 waiting · 3 idle (limit 3).')
 
   for (const surface of ['terminal', 'desktop'] as const) {
@@ -76,4 +76,15 @@ test('/agents opens a pane: waiting first, then idle longest first, then working
     expect(await ui.find({ text: /2 of 3 running/ })).toBeDefined()
     await ui.unmount()
   }
+})
+
+test('a command name the engine refuses does not stop the heartbeat', async ($, on) => {
+  const w = world(on, { refuse: ['agents-list'] })
+  await start($)
+  expect(w.own().status).toBe('idle')
+
+  const set = await run($, 'agents-limit', '4')
+  expect(set.text).toBe('Agent limit set to 4.')
+  await w.clock.advance(30_000)
+  expect(w.own().heartbeat).toBe(w.clock.now())
 })

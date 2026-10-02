@@ -1,6 +1,8 @@
 import type { AgentRecord, AgentSelf, AgentStatus } from '../types'
 
 export const HEARTBEAT_MS = 30_000
+/** How often the other sessions' files are read between heartbeats. */
+export const LOOK_MS = 10_000
 /** A file whose heartbeat is older than this is a session that is gone. */
 export const STALE_MS = 2 * 60_000
 /** Ended and stale files are removed once they are this old. */

@@ -19,7 +19,13 @@ export const fileOf = (id: string) => `${DIR}/${id}.json`
  */
 export const world = (
   on: On,
-  options: { store?: Record<string, unknown>; cwd?: string; agents?: AgentInfo[] } = {},
+  options: {
+    store?: Record<string, unknown>
+    cwd?: string
+    agents?: AgentInfo[]
+    /** Command names the engine refuses, as it refuses a built-in's. */
+    refuse?: string[]
+  } = {},
 ) => {
   const files = new Map<string, string>()
   const toasts: string[] = []
@@ -44,7 +50,12 @@ export const world = (
   on('classic.PermissionRequest', () => ({}))
   on('classic.PreToolUse', () => ({}))
   on('tool.call', () => ({ result: 'done' }) as never)
-  on('command.register', ($, e) => ({ value: { command: e.name } }))
+  on('command.register', ($, e) =>
+    options.refuse?.includes(e.name)
+      ? { deny: `"/${e.name}" refused: it is the built-in /${e.name}` }
+      : { value: { command: e.name } },
+  )
+  on('ui.log', () => ({ value: undefined }))
   on('agent.list', () => ({ value: options.agents ?? [] }))
   on('ui.toast', ($, e) => {
     toasts.push(e.text)
