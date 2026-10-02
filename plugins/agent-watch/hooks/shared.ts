@@ -1,6 +1,5 @@
 import type { AgentRecord, AgentSelf, AgentStatus } from '../types'
 
-export const PANE = 'agent-watch'
 export const HEARTBEAT_MS = 30_000
 /** A file whose heartbeat is older than this is a session that is gone. */
 export const STALE_MS = 2 * 60_000

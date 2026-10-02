@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import {
+  countOf,
   folderName,
   forgotten,
   formatDuration,
@@ -13,11 +14,14 @@ import {
   othersActive,
   parseRecord,
   readOptions,
+  sortForPane,
   warningText,
 } from './shared'
-import type { AgentRecord, AgentSelf, Options } from './shared'
+import type { AgentRecord, AgentSelf, AgentStatus, Options } from './shared'
 
 type Engine = EngineInterface
+
+const PANE = 'agent-watch'
 
 const sessions = atom({ plugin: 'agent-watch', key: 'sessions' } as const, [])
 const checkedAt = atom({ plugin: 'agent-watch', key: 'checkedAt' } as const, 0)
@@ -293,6 +297,37 @@ const tick = async ($: Engine, config: Options) => {
 const LIMIT_USAGE = 'Usage: /agents-limit <n> (a whole number, 1 or more), or /agents-limit reset'
 
 // ---------------------------------------------------------------------------
+// Overview: the /agents pane and the band above the prompt
+// ---------------------------------------------------------------------------
+
+/** Single-width symbols, no emoji. */
+const SYMBOL: Record<AgentStatus, string> = {
+  working: '\u25cf', // ●
+  waiting: '\u25c6', // ◆
+  idle: '\u25cb', // ○
+  ended: '\u00b7', // ·
+}
+
+const COLOR: Record<AgentStatus, string | undefined> = {
+  working: 'green',
+  waiting: 'yellow',
+  idle: undefined,
+  ended: undefined,
+}
+
+/** `3 working · 1 waiting · 2 idle`, leaving out the states with none. */
+const summaryOf = (list: readonly AgentRecord[]): string => {
+  const counts = countOf(list)
+  const parts = [
+    counts.working > 0 ? `${counts.working} working` : '',
+    counts.waiting > 0 ? `${counts.waiting} waiting` : '',
+    counts.idle > 0 ? `${counts.idle} idle` : '',
+  ].filter(Boolean)
+
+  return parts.length > 0 ? parts.join(' \u00b7 ') : 'no sessions'
+}
+
+// ---------------------------------------------------------------------------
 // Hooks
 // ---------------------------------------------------------------------------
 
@@ -308,6 +343,11 @@ export const register: Register = (on, options) => {
       name: 'agents-limit',
       description: 'Set how many sessions may run before Agent Watch warns you',
       argumentHint: '<n> | reset',
+      immediate: true,
+    })
+    await $.command.register({
+      name: 'agents',
+      description: 'List every Claude Code session: waiting, idle and working',
       immediate: true,
     })
     await ensureSelf($)
@@ -339,6 +379,67 @@ export const register: Register = (on, options) => {
     await update($, limit, () => value)
 
     return { text: `Agent limit set to ${value}.` }
+  })
+
+  on('command.run', { command: 'agents' }, async $ => {
+    const list = await refresh($, { countSubagents: config.countSubagents, isPruning: false })
+    const max = await loadLimit($, config)
+    await $.ui.open({ id: PANE, title: 'Agents' })
+
+    return { text: `Agent Watch: ${summaryOf(list)} (limit ${max}).` }
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const { Box, Text } = $.ui.resolve(e)
+    const list = sortForPane(await read($, sessions))
+    const own = await read($, self)
+    const max = await read($, limit)
+    const now = Math.max(await read($, checkedAt), await $.clock.now())
+    const running = list.filter(one => one.status === 'working' || one.status === 'waiting').length
+    const room = Math.max(1, (e.viewport?.rows ?? 24) - 4)
+
+    return (
+      <Box flexDirection="column">
+        <Box>
+          <Text color={running >= max ? 'yellow' : undefined}>
+            {running} of {max} running
+          </Text>
+          <Text dimColor> {'\u00b7'} {summaryOf(list)}</Text>
+        </Box>
+        {list.length === 0 && <Text dimColor>No sessions found yet.</Text>}
+        {list.slice(0, room).map(one => (
+          <Box key={one.id} flexDirection="row" gap={1}>
+            <Text color={COLOR[one.status]}>{SYMBOL[one.status]}</Text>
+            <Text color={COLOR[one.status]}>{one.status.padEnd(7)}</Text>
+            <Text dimColor>{formatDuration(now - one.since).padStart(7)}</Text>
+            <Text wrap="truncate-end" bold={one.id === own?.id}>
+              {folderName(one.cwd)}
+              {one.id === own?.id ? ' (this one)' : ''}
+            </Text>
+          </Box>
+        ))}
+        {list.length > room && <Text dimColor>and {list.length - room} more</Text>}
+      </Box>
+    )
+  })
+
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.props.hasSurvey) return next(e)
+    const list = await read($, sessions)
+    const own = await read($, self)
+    // Nothing to show while this is the only session.
+    if (!list.some(one => one.id !== own?.id)) return next(e)
+
+    const { Box, Text } = $.ui.resolve(e)
+    const max = await read($, limit)
+    const running = list.filter(one => one.status === 'working' || one.status === 'waiting').length
+
+    return (
+      <Box>
+        <Text dimColor>{summaryOf(list)}</Text>
+        {running >= max && <Text color="yellow"> (limit {max})</Text>}
+      </Box>
+    )
   })
 
   on('prompt.submit', async ($, e, next) => {
