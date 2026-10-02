@@ -2,14 +2,20 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import {
+  folderName,
+  forgotten,
+  formatDuration,
   HEARTBEAT_MS,
   isLive,
   isPrunable,
   isSafeId,
+  nudgeKey,
+  othersActive,
   parseRecord,
   readOptions,
+  warningText,
 } from './shared'
-import type { AgentRecord, AgentSelf } from './shared'
+import type { AgentRecord, AgentSelf, Options } from './shared'
 
 type Engine = EngineInterface
 
@@ -198,6 +204,95 @@ const refresh = async (
 }
 
 // ---------------------------------------------------------------------------
+// Nudge: the warning at the limit and the toast for forgotten sessions
+// ---------------------------------------------------------------------------
+
+/** The `/agents-limit` override from the store, else the configured limit. */
+const loadLimit = async ($: Engine, config: Options): Promise<number> => {
+  const stored = await $.store.get('limit')
+  const value = typeof stored === 'number' && Number.isInteger(stored) && stored > 0
+    ? stored
+    : config.limit
+  await update($, limit, () => value)
+
+  return value
+}
+
+const nameOf = async ($: Engine, config: Options): Promise<string> => {
+  if (config.name !== '') return config.name
+  const user = (await $.env.get('USER')) ?? (await $.env.get('USERNAME'))
+
+  return user !== undefined && user !== '' ? user : 'there'
+}
+
+/**
+ * Counts the other sessions working or waiting (and this one's running
+ * subagents when asked); at or over the limit, warns, or in strict mode holds
+ * the prompt until it is sent a second time.
+ */
+const nudge = async (
+  $: Engine,
+  config: Options,
+  text: string,
+): Promise<{ drop: string } | undefined> => {
+  const list = await refresh($, { countSubagents: config.countSubagents, isPruning: false })
+  const own = await ensureSelf($)
+  const extra = config.countSubagents ? await read($, subagents) : 0
+  const running = othersActive(list, own.id) + extra
+  const max = await loadLimit($, config)
+
+  if (running < max) {
+    await update($, pendingConfirm, () => null)
+    return undefined
+  }
+  const warning = warningText(await nameOf($, config), running)
+  if (!config.strict) {
+    $.ui.toast(warning, { timeoutMs: 6_000 })
+    return undefined
+  }
+  if ((await read($, pendingConfirm)) === text) {
+    await update($, pendingConfirm, () => null)
+    return undefined
+  }
+  await update($, pendingConfirm, () => text)
+  // Put the prompt back so a second Enter sends it.
+  $.clock.after(50, () => {
+    void $.prompt.fill({ text })
+  })
+
+  return { drop: `${warning} The limit is ${max}. Press Enter again to send it anyway.` }
+}
+
+/** One toast for the other sessions idle or waiting longer than idleMinutes. */
+const nudgeForgotten = async ($: Engine, config: Options, list: readonly AgentRecord[]) => {
+  const own = await ensureSelf($)
+  const now = await $.clock.now()
+  const seen = await read($, nudged)
+  const late = forgotten(list, own.id, now, config.idleMinutes)
+  const fresh = late.filter(one => !seen.includes(nudgeKey(one)))
+  // Remember only keys that still stand, so the list never grows.
+  await update($, nudged, () => late.map(nudgeKey))
+  if (fresh.length === 0) return
+
+  const line = (one: AgentRecord) =>
+    `${folderName(one.cwd)} ${one.status === 'waiting' ? 'waiting on you' : 'idle'} for ${formatDuration(now - one.since)}`
+  $.ui.toast(
+    fresh.length === 1
+      ? `Agent Watch: ${line(fresh[0] as AgentRecord)}`
+      : `Agent Watch: ${fresh.length} sessions need you: ${fresh.map(line).join(', ')}`,
+    { timeoutMs: 8_000 },
+  )
+}
+
+const tick = async ($: Engine, config: Options) => {
+  await loadLimit($, config)
+  const list = await refresh($, config)
+  await nudgeForgotten($, config, list)
+}
+
+const LIMIT_USAGE = 'Usage: /agents-limit <n> (a whole number, 1 or more), or /agents-limit reset'
+
+// ---------------------------------------------------------------------------
 // Hooks
 // ---------------------------------------------------------------------------
 
@@ -209,16 +304,51 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     const started = await next(e)
+    await $.command.register({
+      name: 'agents-limit',
+      description: 'Set how many sessions may run before Agent Watch warns you',
+      argumentHint: '<n> | reset',
+      immediate: true,
+    })
     await ensureSelf($)
-    await refresh($, config)
+    await tick($, config)
     $.clock.every(HEARTBEAT_MS, () => {
-      void refresh($, config)
+      void tick($, config)
     })
 
     return started
   })
 
+  on('command.run', { command: 'agents-limit' }, async ($, e) => {
+    const arg = e.args.trim()
+    if (arg === '') {
+      const isOverride = (await $.store.get('limit')) !== undefined
+      const max = await loadLimit($, config)
+
+      return { text: `Agent limit: ${max} (${isOverride ? 'set with /agents-limit' : 'from the plugin config'}).` }
+    }
+    if (arg === 'reset') {
+      await $.store.delete('limit')
+      const max = await loadLimit($, config)
+
+      return { text: `Agent limit reset to ${max} from the plugin config.` }
+    }
+    const value = Number(arg)
+    if (!Number.isInteger(value) || value < 1) return { text: LIMIT_USAGE }
+    await $.store.set('limit', value)
+    await update($, limit, () => value)
+
+    return { text: `Agent limit set to ${value}.` }
+  })
+
   on('prompt.submit', async ($, e, next) => {
+    // Only the person's own prompts, and not one typed over a running turn:
+    // that session already counts.
+    const isPerson = e.origin.kind === 'composer' || e.origin.kind === 'bridge'
+    if (isPerson && e.turnId === undefined) {
+      const held = await nudge($, config, e.text)
+      if (held !== undefined) return held
+    }
     const result = await next(e)
     if (result.drop === undefined) await toWorking($)
 

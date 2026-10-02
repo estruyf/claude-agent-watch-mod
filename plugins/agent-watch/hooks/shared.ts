@@ -122,4 +122,8 @@ export const forgotten = (
 /** The session id only ever names a file inside the watch folder. */
 export const isSafeId = (id: string): boolean => /^[A-Za-z0-9_-]{1,128}$/.test(id)
 
+/** The toast at the limit. */
+export const warningText = (name: string, running: number): string =>
+  `Hey ${name}, be aware you are already running ${running} ${running === 1 ? 'agent' : 'agents'}.`
+
 export type { AgentRecord, AgentSelf, AgentStatus }
