@@ -1,0 +1,4 @@
+# Laid by Claude Code at every load; build specific
+plugins/agent-watch/.claude-plugin/types/
+node_modules/
+.DS_Store

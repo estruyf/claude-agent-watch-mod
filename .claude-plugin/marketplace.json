@@ -1,0 +1,22 @@
+{
+  "name": "agent-watch-mod",
+  "owner": {
+    "name": "Elio Struyf",
+    "url": "https://github.com/estruyf"
+  },
+  "metadata": {
+    "description": "Agent Watch: keep the number of running Claude Code sessions under a limit."
+  },
+  "plugins": [
+    {
+      "name": "agent-watch",
+      "source": "./plugins/agent-watch",
+      "description": "Counts your open Claude Code sessions, warns when you go over a limit and shows the ones waiting on you or sitting idle.",
+      "version": "0.1.0",
+      "author": { "name": "Elio Struyf" },
+      "homepage": "https://github.com/estruyf/claude-agent-watch-mod",
+      "license": "MIT",
+      "keywords": ["sessions", "agents", "limit", "focus", "mod"]
+    }
+  ]
+}

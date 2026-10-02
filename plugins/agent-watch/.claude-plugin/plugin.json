@@ -1,0 +1,42 @@
+{
+  "name": "agent-watch",
+  "version": "0.1.0",
+  "description": "Keeps the number of running Claude Code sessions under a limit and shows the ones waiting on you or sitting idle.",
+  "author": { "name": "Elio Struyf" },
+  "homepage": "https://github.com/estruyf/claude-agent-watch-mod",
+  "repository": "https://github.com/estruyf/claude-agent-watch-mod",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "limit": {
+      "type": "number",
+      "title": "Session limit",
+      "description": "How many sessions may be working or waiting before Agent Watch warns you.",
+      "default": 3
+    },
+    "idleMinutes": {
+      "type": "number",
+      "title": "Forgotten after (minutes)",
+      "description": "Toast when another session has been idle or waiting on you this long.",
+      "default": 30
+    },
+    "strict": {
+      "type": "boolean",
+      "title": "Strict mode",
+      "description": "Hold a prompt at the limit until you press Enter again to confirm.",
+      "default": false
+    },
+    "countSubagents": {
+      "type": "boolean",
+      "title": "Count subagents",
+      "description": "Also count this session's running background subagents toward the limit.",
+      "default": false
+    },
+    "name": {
+      "type": "string",
+      "title": "Your name",
+      "description": "The name the warning greets you with; empty uses $USER.",
+      "default": ""
+    }
+  }
+}
