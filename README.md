@@ -90,12 +90,14 @@ Subagent turns don't change the state. A permission prompt raised by a subagent 
 | `countSubagents` | `false` | Also count this session's running background subagents (via `$.agent.list()`). |
 | `name` | `""` | The name the warning greets you with. Empty uses `$USER`. |
 
-Set them from the `/config` menu (each option is a row there), or from a shell:
+Set them in Claude Code with `/plugin configure agent-watch@agent-watch-mod`, or from a shell:
 
 ```sh
-claude plugin configure agent-watch@agent-watch-mod            # show the options
+claude plugin configure agent-watch@agent-watch-mod            # show the options and which are set
 echo '{"limit":"4","strict":"true"}' | claude plugin configure agent-watch@agent-watch-mod --values-stdin
 ```
+
+Both write `pluginConfigs["agent-watch@agent-watch-mod"].options` in your user settings. Restart your sessions to apply.
 
 A `/agents-limit` override wins over the configured `limit` until you run `/agents-limit reset`.
 
