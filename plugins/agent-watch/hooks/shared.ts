@@ -38,7 +38,7 @@ export const parseRecord = (text: string): AgentRecord | undefined => {
     return undefined
   }
   if (typeof value !== 'object' || value === null) return undefined
-  const { id, cwd, status, since, heartbeat } = value as Record<string, unknown>
+  const { id, cwd, status, since, heartbeat, prompted } = value as Record<string, unknown>
   const isRecord =
     typeof id === 'string' &&
     id !== '' &&
@@ -47,9 +47,10 @@ export const parseRecord = (text: string): AgentRecord | undefined => {
     typeof since === 'number' &&
     typeof heartbeat === 'number'
 
-  return isRecord
-    ? { id, cwd, status: status as AgentStatus, since, heartbeat }
-    : undefined
+  if (!isRecord) return undefined
+  const record: AgentRecord = { id, cwd, status: status as AgentStatus, since, heartbeat }
+
+  return typeof prompted === 'number' ? { ...record, prompted } : record
 }
 
 export const isStale = (record: AgentRecord, now: number): boolean =>
@@ -106,6 +107,11 @@ export const formatDuration = (ms: number): string => {
 export const nudgeKey = (record: AgentRecord): string =>
   `${record.id}:${record.status}:${record.since}`
 
+/** Idle or waiting longer than `idleMinutes`. */
+export const isForgotten = (record: AgentRecord, now: number, idleMinutes: number): boolean =>
+  (record.status === 'idle' || record.status === 'waiting') &&
+  now - record.since > idleMinutes * 60_000
+
 /** Other live sessions idle or waiting longer than `idleMinutes`. */
 export const forgotten = (
   records: readonly AgentRecord[],
@@ -113,12 +119,26 @@ export const forgotten = (
   now: number,
   idleMinutes: number,
 ): AgentRecord[] =>
-  records.filter(
-    one =>
-      one.id !== selfId &&
-      (one.status === 'idle' || one.status === 'waiting') &&
-      now - one.since > idleMinutes * 60_000,
-  )
+  records.filter(one => one.id !== selfId && isForgotten(one, now, idleMinutes))
+
+/**
+ * The one session that sends the forgotten nudge, so it shows once and not in
+ * every open session: the one the person prompted last (likely the one in
+ * front of them), never one forgotten itself; then the latest state change,
+ * then the lowest id.
+ * Every session reads the same files, so they agree without talking.
+ */
+export const nudgerOf = (
+  records: readonly AgentRecord[],
+  now: number,
+  idleMinutes: number,
+): string | undefined =>
+  records
+    .filter(one => !isForgotten(one, now, idleMinutes))
+    .sort(
+      (a, b) =>
+        (b.prompted ?? 0) - (a.prompted ?? 0) || b.since - a.since || (a.id < b.id ? -1 : 1),
+    )[0]?.id
 
 /** The session id only ever names a file inside the watch folder. */
 export const isSafeId = (id: string): boolean => /^[A-Za-z0-9_-]{1,128}$/.test(id)

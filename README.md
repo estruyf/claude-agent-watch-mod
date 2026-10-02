@@ -9,6 +9,12 @@ Run a few sessions side by side and it's easy to lose count, or to forget the on
    `Hey Elio, be aware you are already running 3 agents.`
 3. **Shows which sessions are waiting on you or sit idle**, so you find the ones you forgot.
 
+## Why
+
+AI agents are fast enough that it's tempting to start one more while the last one is still working, and then one more. Before you know it you're juggling five sessions, switching context all the time and no longer reading what they do. I wrote about this in [The AI chaos beast in your head](https://www.eliostruyf.com/ai-chaos-beast-head/). One of the boundaries from that post is to run two or three agents I can actually follow, instead of five I forget about.
+
+Agent Watch is that boundary, built into Claude Code. The default limit is 3, and it doesn't block you unless you turn on strict mode. It reminds you when you're about to start one more, and points at the sessions you've lost track of.
+
 ## Screenshot
 
 <!-- TODO: replace with a real screenshot: docs/screenshot.png -->
@@ -65,7 +71,7 @@ Or `claude plugin marketplace update agent-watch-mod && claude plugin update age
 | The warning toast | On prompt submit, when the *other* sessions that are working or waiting reach the limit. A prompt typed while this session's own turn is already running doesn't warn, since that session is counted already. |
 | `/agents-list` | Opens a pane listing every session with its folder, status and time in that state: waiting first, then idle (longest first), then working. |
 | `/agents-limit <n>` | Overrides the limit for every session (stored in the plugin's store). `/agents-limit` shows the current limit, `/agents-limit reset` goes back to the configured one. |
-| The forgotten nudge | A toast when another session has been idle or waiting on you longer than `idleMinutes`, once per session per state change. |
+| The forgotten nudge | A toast when another session has been idle or waiting on you longer than `idleMinutes`, once per session per state change. Only the session you prompted most recently shows it, so you don't get the same toast in every terminal. |
 
 > Why `/agents-list` and not `/agents`? `/agents` is Claude Code's built-in command for managing subagents, and plugins can't take over a built-in's name.
 
@@ -109,8 +115,10 @@ Every session runs its own copy of the mod and writes its own status file:
 
 ```text
 ~/.claude/agent-watch/<session-id>.json     (under $CLAUDE_CONFIG_DIR when that is set)
-{ "id": "...", "cwd": "/path/to/project", "status": "working", "since": 1790966403720, "heartbeat": 1790966433720 }
+{ "id": "...", "cwd": "/path/to/project", "status": "working", "since": 1790966403720, "heartbeat": 1790966433720, "prompted": 1790966403700 }
 ```
+
+`prompted` is the last time you sent a prompt in that session (left out until you do). All sessions read the same files and pick the same nudger: the live session you prompted last, never one that is forgotten itself.
 
 - **One file per session**, not a shared store, so sessions never overwrite each other.
 - **Heartbeat every 30 s** (`$.clock.every`) rewrites the file. The other sessions' files are read every 10 s so the band stays current.
@@ -125,7 +133,7 @@ git clone https://github.com/estruyf/claude-agent-watch-mod
 cd claude-agent-watch-mod
 claude plugin validate plugins/agent-watch     # the manifest and the hooks module
 claude plugin validate .                       # the marketplace
-claude plugin test plugins/agent-watch         # 30 tests
+claude plugin test plugins/agent-watch         # 32 tests
 claude --plugin-dir plugins/agent-watch        # run it; saving a file hot-reloads it
 ```
 

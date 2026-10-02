@@ -12,6 +12,7 @@ import {
   isPrunable,
   isSafeId,
   nudgeKey,
+  nudgerOf,
   othersActive,
   parseRecord,
   readOptions,
@@ -85,6 +86,7 @@ const writeSelf = async ($: Engine): Promise<AgentRecord | null> => {
     status: own.status,
     since: own.since,
     heartbeat: await $.clock.now(),
+    ...(own.prompted !== undefined && { prompted: own.prompted }),
   }
   await writeRecord($, record)
   await update($, sessions, list => {
@@ -118,6 +120,14 @@ const toWorking = ($: Engine) =>
 
 const toIdle = ($: Engine) =>
   moveTo($, own => (own.status === 'idle' ? own : { ...own, status: 'idle', before: null }))
+
+/** The person sent a prompt here: this session now leads the nudges. */
+const markPrompted = async ($: Engine): Promise<void> => {
+  const own = await ensureSelf($)
+  const prompted = await $.clock.now()
+  await update($, self, () => ({ ...own, prompted }))
+  await writeSelf($)
+}
 
 /** Blocked on the person: remembers where to return once they answer. */
 const toWaiting = ($: Engine) =>
@@ -291,9 +301,10 @@ const nudgeForgotten = async ($: Engine, config: Options, list: readonly AgentRe
   const seen = await read($, nudged)
   const late = forgotten(list, own.id, now, config.idleMinutes)
   const fresh = late.filter(one => !seen.includes(nudgeKey(one)))
-  // Remember only keys that still stand, so the list never grows.
+  // Every session remembers what it saw, nudger or not, so a new nudger does
+  // not repeat a toast; only keys that still stand, so the list never grows.
   await update($, nudged, () => late.map(nudgeKey))
-  if (fresh.length === 0) return
+  if (fresh.length === 0 || nudgerOf(list, now, config.idleMinutes) !== own.id) return
 
   const line = (one: AgentRecord) =>
     `${folderName(one.cwd)} ${one.status === 'waiting' ? 'waiting on you' : 'idle'} for ${formatDuration(now - one.since)}`
@@ -481,7 +492,10 @@ export const register: Register = (on, options) => {
       if (held !== undefined) return held
     }
     const result = await next(e)
-    if (result.drop === undefined) await toWorking($)
+    if (result.drop === undefined) {
+      if (isPerson) await markPrompted($)
+      await toWorking($)
+    }
 
     return result
   })

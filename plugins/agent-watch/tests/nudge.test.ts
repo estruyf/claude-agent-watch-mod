@@ -113,3 +113,40 @@ test('nudges once per state about a session forgotten past idleMinutes', async (
   expect(w.toasts.at(-1)).toBe('Agent Watch: beta waiting on you for 40m')
   expect(w.toasts.length).toBe(3)
 })
+
+test('only the session prompted last sends the forgotten nudge', async ($, on) => {
+  const w = world(on)
+  const now = w.clock.now()
+  w.seed('beta', 'idle', { since: now - 45 * MINUTE })
+  // You typed in gamma a minute ago: gamma nudges, this session stays quiet.
+  w.seed('gamma', 'working', { since: now - MINUTE, prompted: now - MINUTE })
+  await start($)
+  expect(w.toasts).toEqual([])
+
+  // You switch to this session and prompt: it leads now, but beta was
+  // already seen while gamma led, so it is not nudged a second time.
+  await submit($)
+  w.seed('beta', 'idle', { since: now - 45 * MINUTE })
+  w.seed('gamma', 'working', { since: now - MINUTE, prompted: now - MINUTE })
+  await w.clock.advance(30_000)
+  expect(w.own().prompted).toBe(now)
+  expect(w.toasts).toEqual([])
+
+  // A session forgotten after the switch is nudged here.
+  w.seed('beta', 'idle', { since: now - 45 * MINUTE })
+  w.seed('gamma', 'idle', { since: now - 31 * MINUTE, prompted: now - MINUTE })
+  await w.clock.advance(30_000)
+  expect(w.toasts).toEqual(['Agent Watch: gamma idle for 32m'])
+})
+
+test('a session forgotten itself never leads the nudges', async ($, on) => {
+  const w = world(on)
+  const now = w.clock.now()
+  // Prompted last, but idle for an hour: you are not there.
+  w.seed('beta', 'idle', { since: now - 60 * MINUTE, prompted: now - 61 * MINUTE })
+  w.seed('gamma', 'waiting', { since: now - 40 * MINUTE })
+  await start($)
+  expect(w.toasts).toEqual([
+    'Agent Watch: 2 sessions need you: beta idle for 1h 0m, gamma waiting on you for 40m',
+  ])
+})

@@ -112,7 +112,7 @@ export const world = (
   const seed = (
     id: string,
     status: AgentRecord['status'],
-    extra: { cwd?: string; since?: number; ago?: number } = {},
+    extra: { cwd?: string; since?: number; ago?: number; prompted?: number } = {},
   ) => {
     const heartbeat = clock.now() - (extra.ago ?? 0)
     const record: AgentRecord = {
@@ -121,6 +121,7 @@ export const world = (
       status,
       since: extra.since ?? heartbeat,
       heartbeat,
+      ...(extra.prompted !== undefined && { prompted: extra.prompted }),
     }
     files.set(fileOf(id), JSON.stringify(record))
   }

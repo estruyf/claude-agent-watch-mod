@@ -10,6 +10,8 @@ export type AgentRecord = {
   since: number
   /** The last time the session wrote its file, ms since the epoch. */
   heartbeat: number
+  /** The last time the person sent a prompt here; elects who nudges. */
+  prompted?: number
 }
 
 /** This session's own status, the one it writes to its file. */
@@ -19,6 +21,8 @@ export type AgentSelf = {
   since: number
   /** The status to return to once a wait on the person resolves. */
   before: AgentStatus | null
+  /** The last time the person sent a prompt here. */
+  prompted?: number
 }
 
 declare module 'claude-code' {
