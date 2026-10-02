@@ -1,5 +1,3 @@
-import { atom } from 'claude-code'
-
 import type { AgentRecord, AgentSelf, AgentStatus } from '../types'
 
 export const PANE = 'agent-watch'
@@ -8,17 +6,6 @@ export const HEARTBEAT_MS = 30_000
 export const STALE_MS = 2 * 60_000
 /** Ended and stale files are removed once they are this old. */
 export const PRUNE_MS = 60 * 60_000
-
-export const sessions = atom({ plugin: 'agent-watch', key: 'sessions' } as const, [])
-export const checkedAt = atom({ plugin: 'agent-watch', key: 'checkedAt' } as const, 0)
-export const self = atom({ plugin: 'agent-watch', key: 'self' } as const, null)
-export const limit = atom({ plugin: 'agent-watch', key: 'limit' } as const, 3)
-export const subagents = atom({ plugin: 'agent-watch', key: 'subagents' } as const, 0)
-export const nudged = atom({ plugin: 'agent-watch', key: 'nudged' } as const, [])
-export const pendingConfirm = atom(
-  { plugin: 'agent-watch', key: 'pendingConfirm' } as const,
-  null,
-)
 
 export type Options = {
   limit: number
