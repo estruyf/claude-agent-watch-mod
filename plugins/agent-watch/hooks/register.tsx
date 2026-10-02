@@ -261,7 +261,7 @@ const nudge = async (
   await update($, pendingConfirm, () => text)
   // Put the prompt back so a second Enter sends it.
   $.clock.after(50, () => {
-    void $.prompt.fill({ text })
+    $.prompt.fill({ text }).catch(() => undefined)
   })
 
   return { drop: `${warning} The limit is ${max}. Press Enter again to send it anyway.` }
@@ -353,7 +353,7 @@ export const register: Register = (on, options) => {
     await ensureSelf($)
     await tick($, config)
     $.clock.every(HEARTBEAT_MS, () => {
-      void tick($, config)
+      tick($, config).catch(() => undefined)
     })
 
     return started
@@ -499,7 +499,7 @@ export const register: Register = (on, options) => {
     // A /clear goes on under a new id, with no session.start of its own.
     if (e.reason === 'clear') {
       $.clock.after(500, () => {
-        void writeSelf($)
+        writeSelf($).catch(() => undefined)
       })
     }
 
